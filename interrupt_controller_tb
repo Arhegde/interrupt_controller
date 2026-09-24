@@ -1,0 +1,321 @@
+`timescale 1ns / 1ps
+
+module interrupt_controller_tb;
+
+    reg clk;
+    reg rst_n;
+
+    reg [3:0] interrupt_in;
+    wire irq_out;
+
+    reg write_en;
+    reg read_en;
+
+    reg [3:0] addr;
+    reg [31:0] write_data;
+
+    wire [31:0] read_data;
+
+    integer fp;
+
+    // --------------------------------------------------
+    // DUT
+    // --------------------------------------------------
+
+    interrupt_controller uut (
+
+        .clk(clk),
+        .rst_n(rst_n),
+
+        .interrupt_in(interrupt_in),
+        .irq_out(irq_out),
+
+        .write_en(write_en),
+        .read_en(read_en),
+
+        .addr(addr),
+        .write_data(write_data),
+
+        .read_data(read_data)
+    );
+
+    // --------------------------------------------------
+    // CLOCK
+    // --------------------------------------------------
+
+    always #5 clk = ~clk;
+
+
+    // --------------------------------------------------
+    // CREATE CSV FILE
+    // --------------------------------------------------
+
+    initial
+    begin
+
+        fp = $fopen("interrupt_log.csv", "w");
+
+        $fwrite(fp,
+        "time,interrupt_in,IER,ISR,IRQ\n");
+
+    end
+
+
+    // --------------------------------------------------
+    // RECORD SIGNALS
+    // --------------------------------------------------
+
+    always @(posedge clk)
+    begin
+
+        $fwrite(
+            fp,
+            "%0t,%b,%b,%b,%b\n",
+            $time,
+            interrupt_in,
+            uut.IER,
+            uut.ISR,
+            irq_out
+        );
+
+    end
+
+
+    // --------------------------------------------------
+    // TEST SEQUENCE
+    // --------------------------------------------------
+
+    initial
+    begin
+
+        // Initial values
+
+        clk = 0;
+
+        rst_n = 0;
+
+        interrupt_in = 4'b0000;
+
+        write_en = 0;
+
+        read_en = 0;
+
+        addr = 4'h0;
+
+        write_data = 32'h00000000;
+
+
+        // --------------------------------------------------
+        // RESET
+        // --------------------------------------------------
+
+        #20;
+
+        rst_n = 1;
+
+        $display("RESET COMPLETE");
+
+
+        // --------------------------------------------------
+        // ENABLE INTERRUPTS
+        //
+        // IER = 0101
+        //
+        // Interrupt 0 = ENABLED
+        // Interrupt 1 = DISABLED
+        // Interrupt 2 = ENABLED
+        // Interrupt 3 = DISABLED
+        // --------------------------------------------------
+
+        #10;
+
+        write_en = 1;
+
+        addr = 4'h0;
+
+        write_data = 32'b00000000000000000000000000000101;
+
+        #10;
+
+        write_en = 0;
+
+        $display("IER = 0101");
+
+
+
+        // --------------------------------------------------
+        // TIMER / INTERRUPT 0
+        // --------------------------------------------------
+
+        #20;
+
+        interrupt_in[0] = 1'b1;
+
+        $display("Interrupt 0 Generated");
+
+        #10;
+
+        interrupt_in[0] = 1'b0;
+
+
+
+        // --------------------------------------------------
+        // WAIT
+        // --------------------------------------------------
+
+        #20;
+
+        if(irq_out)
+            $display("IRQ OUTPUT ACTIVE");
+        else
+            $display("IRQ OUTPUT NOT ACTIVE");
+
+
+
+        // --------------------------------------------------
+        // READ ISR
+        // --------------------------------------------------
+
+        read_en = 1;
+
+        addr = 4'h4;
+
+        #10;
+
+        $display("ISR VALUE = %b", read_data[3:0]);
+
+        read_en = 0;
+
+
+
+        // --------------------------------------------------
+        // CLEAR INTERRUPT 0
+        // --------------------------------------------------
+
+        #20;
+
+        write_en = 1;
+
+        addr = 4'h8;
+
+        write_data = 32'b00000000000000000000000000000001;
+
+        #10;
+
+        write_en = 0;
+
+        $display("Interrupt 0 Cleared");
+
+
+
+        // --------------------------------------------------
+        // CHECK IRQ
+        // --------------------------------------------------
+
+        #20;
+
+        if(irq_out)
+            $display("IRQ STILL ACTIVE");
+        else
+            $display("IRQ CLEARED");
+
+
+
+        // --------------------------------------------------
+        // INTERRUPT 1
+        //
+        // Interrupt 1 is disabled because
+        // IER = 0101
+        // --------------------------------------------------
+
+        #20;
+
+        interrupt_in[1] = 1'b1;
+
+        $display("Interrupt 1 Generated But Disabled");
+
+        #10;
+
+        interrupt_in[1] = 1'b0;
+
+
+
+        // --------------------------------------------------
+        // CHECK MASKING
+        // --------------------------------------------------
+
+        #20;
+
+        if(irq_out)
+            $display("IRQ ACTIVE");
+        else
+            $display("IRQ NOT ACTIVE - INTERRUPT 1 IS MASKED");
+
+
+
+        // --------------------------------------------------
+        // INTERRUPT 2
+        //
+        // Interrupt 2 is ENABLED
+        // --------------------------------------------------
+
+        #20;
+
+        interrupt_in[2] = 1'b1;
+
+        $display("Interrupt 2 Generated");
+
+        #10;
+
+        interrupt_in[2] = 1'b0;
+
+
+
+        // --------------------------------------------------
+        // WAIT
+        // --------------------------------------------------
+
+        #20;
+
+        if(irq_out)
+            $display("IRQ ACTIVE FOR INTERRUPT 2");
+        else
+            $display("IRQ NOT ACTIVE");
+
+
+
+        // --------------------------------------------------
+        // CLEAR INTERRUPT 2
+        // --------------------------------------------------
+
+        #20;
+
+        write_en = 1;
+
+        addr = 4'h8;
+
+        write_data = 32'b00000000000000000000000000000100;
+
+        #10;
+
+        write_en = 0;
+
+        $display("Interrupt 2 Cleared");
+
+
+
+        // --------------------------------------------------
+        // END SIMULATION
+        // --------------------------------------------------
+
+        #30;
+
+        $display("SIMULATION FINISHED");
+
+        $fclose(fp);
+
+        $stop;
+
+    end
+
+endmodule
